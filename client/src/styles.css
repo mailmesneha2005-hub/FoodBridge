@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { font-family: 'DM Sans', sans-serif; color: #1e2a22; background: #f8faf8; font-synthesis: none; text-rendering: optimizeLegibility; font-optical-sizing: auto; }
+html { scroll-behavior: smooth; scroll-padding-top: 6rem; }
+body { margin: 0; min-width: 320px; background: #f8faf8; }
+button, a { -webkit-tap-highlight-color: transparent; }
+::selection { background: #d3ead7; color: #124d2a; }
+:focus-visible { outline: 3px solid #70bd7d; outline-offset: 3px; }
+@layer components {
+  .button-primary { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-forest focus:outline-none focus:ring-4 focus:ring-leaf-200 disabled:pointer-events-none disabled:opacity-50; }
+  .button-secondary { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-leaf-200 bg-white px-5 py-2.5 text-sm font-bold text-forest transition-colors hover:bg-mist focus:outline-none focus:ring-4 focus:ring-leaf-100 disabled:pointer-events-none disabled:opacity-50; }
+  .button-quiet { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-muted transition-colors hover:bg-leaf-50 hover:text-forest; }
+  .eyebrow { @apply text-xs font-bold uppercase tracking-[.16em] text-primary; }
+  .surface-card { @apply rounded-2xl border border-[#e8eee9] bg-white shadow-card; }
+  .field-control { @apply w-full rounded-xl border border-[#dce5de] bg-white px-4 py-3 text-sm text-ink placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-4 focus:ring-leaf-100; }
+}
