@@ -67,8 +67,9 @@ export function RegisterPage() {
     const next: Record<string,string> = {}
     if (name.length < 2) next.name = 'Enter your name.'
     if (!/^\S+@\S+\.\S+$/.test(email)) next.email = 'Enter a valid email address.'
-    if (password.length < 8) next.password = 'Use at least 8 characters.'
-    if (values.get('password') !== values.get('confirmPassword')) next.confirmPassword = 'Passwords do not match.'
+    const resumingSignedInAccount = Boolean(firebaseAuth?.currentUser)
+    if (!resumingSignedInAccount && password.length < 8) next.password = 'Use at least 8 characters.'
+    if (!resumingSignedInAccount && values.get('password') !== values.get('confirmPassword')) next.confirmPassword = 'Passwords do not match.'
     if (role === 'ngo') {
       if (String(values.get('organizationName') || '').trim().length < 2) next.organizationName = 'Enter the organization name.'
       if (String(values.get('registrationNumber') || '').trim().length < 2) next.registrationNumber = 'Enter the NGO registration number.'

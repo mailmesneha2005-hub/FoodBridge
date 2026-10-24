@@ -2,6 +2,7 @@
   command = "npm run build --workspace client"
   publish = "client/dist"
 
+# API traffic uses the absolute VITE_API_URL build variable; this fallback is for React Router pages only.
 [[redirects]]
   from = "/*"
   to = "/index.html"

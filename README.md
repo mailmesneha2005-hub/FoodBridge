@@ -116,7 +116,7 @@ Copy `.env.example` to `.env` and set the values below. The example contains var
 | `MONGODB_URI` | MongoDB connection string; use a replica set for transactions |
 | `FIREBASE_PROJECT_ID`, `FIREBASE_SERVICE_ACCOUNT_PATH` | Firebase Admin server credentials; keep the service-account JSON outside this repository |
 | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | Firebase Web app configuration for client sign-in |
-| `VITE_API_URL` | Optional API base URL; local Vite proxy is used if omitted |
+| `VITE_API_URL` | Deployed API base URL ending in `/api` for production; local Vite proxy is used if omitted during development |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `CLOUDINARY_UPLOAD_PRESET` | Signed image uploads; API secret stays on the server |
 | `GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_MAPS_API_KEY` | Reserved for Maps integration; the app currently does not make Maps API calls |
 | `ADMIN_BOOTSTRAP_FIREBASE_UID` | Temporary, one-time initial admin bootstrap only |
@@ -163,15 +163,15 @@ Import this repository in Vercel and use:
 
 Set the client environment variables in Vercel before building. In particular, set `VITE_API_URL` to the deployed API origin followed by `/api`, for example `https://foodbridge-api.example.com/api` (replace the example with the actual API URL). The client appends `/v1` for REST requests; Socket.IO connects to the same host. Do not set this to `localhost` or a Vercel URL unless the API is actually hosted there. Also set the Firebase Web app values listed in `.env.example` if sign-in is needed. These `VITE_` values are public client configuration, not server secrets.
 
-The rewrite in `vercel.json` is for React Router deep links such as `/donor/dashboard`; it does not proxy `/api` to the backend. API traffic goes directly to `VITE_API_URL`.
+Netlify's catch-all redirect only handles browser routes such as `/donor/dashboard`; it does not proxy API requests. In Netlify, set `VITE_API_URL` to the actual backend origin ending in `/api`, and set the backend's `CLIENT_ORIGIN` to `https://foodiebridge.netlify.app` (or the exact origin of your deployed site). The client adds `/v1` and sends Firebase ID tokens directly to that API. A missing or relative production API URL is rejected with a configuration error instead of sending authenticated requests to the Netlify static site.
 
 ### API and shared services
 
 1. Create MongoDB Atlas, restrict network access, create a least-privilege database user, and configure backups.
-2. Deploy the API to Render using `render.yaml` (or another persistent Node host) with MongoDB, Firebase Admin, and Cloudinary values in the host's secret settings. Set `CLIENT_ORIGIN` to the exact HTTPS Vercel frontend origin. Render's blueprint expects the environment variable names shown in `render.yaml` and `.env.example`.
+2. Deploy the API to Render using `render.yaml` (or another persistent Node host) with MongoDB, Firebase Admin, and Cloudinary values in the host's secret settings. Set `CLIENT_ORIGIN` to the exact HTTPS frontend origin. Render's blueprint expects the environment variable names shown in `render.yaml` and `.env.example`.
 3. Run `npm run db:indexes` against the intended database after taking a backup.
-4. Add the deployed frontend domain to Firebase Authorized domains. Confirm `https://<api-host>/api/v1/health` reports a connected database before using real workflows.
-5. Redeploy the Vercel client after changing any `VITE_` environment value; Vite embeds these values at build time.
+4. Add the deployed frontend domain to Firebase Authorized domains. Confirm `https://<actual-api-host>/api/v1/health` returns JSON with a connected database before using real workflows.
+5. Set `VITE_API_URL=https://<actual-api-host>/api` in the frontend host's build environment and redeploy after changing it; Vite embeds this value at build time.
 
 Production startup requires valid service configuration and HTTPS CORS origins. Use your hosting provider's secret manager; do not put server credentials in `VITE_` variables.
 

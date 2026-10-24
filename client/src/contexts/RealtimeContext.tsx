@@ -6,9 +6,16 @@ import { firebaseAuth } from '../services/firebase'
 type RealtimeState = { socket: Socket | null; revision: number; connected: boolean }
 const Context = createContext<RealtimeState>({ socket: null, revision: 0, connected: false })
 
-function socketOrigin() {
-  const configured = import.meta.env.VITE_API_URL || '/api'
-  return configured.startsWith('http') ? new URL(configured).origin : window.location.origin
+function socketOrigin(): string | null {
+  const configured = import.meta.env.VITE_API_URL?.trim()
+  if (!configured) return import.meta.env.DEV ? window.location.origin : null
+  try {
+    const url = new URL(configured)
+    if (!import.meta.env.DEV && url.protocol !== 'https:') return null
+    return url.origin
+  } catch {
+    return import.meta.env.DEV ? window.location.origin : null
+  }
 }
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
@@ -19,10 +26,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const auth = firebaseAuth
     if (!firebaseUser || !profile || !auth) { setSocket(null); setConnected(false); return }
+    const origin = socketOrigin()
+    if (!origin) { setSocket(null); setConnected(false); return }
     let active=true, connection:Socket|null=null
     void import('socket.io-client').then(({io})=>{
       if(!active)return
-      connection=io(socketOrigin(), {
+      connection=io(origin, {
         autoConnect: false,
         reconnection: true,
         reconnectionAttempts: Infinity,

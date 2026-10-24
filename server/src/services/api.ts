@@ -19,7 +19,11 @@ const audit = (actorId: string, action: string, entityType: string, entityId: an
 const notify = async (recipientId: any, type: string, message: string, entityType: string, entityId: any) => { const notification = await Notification.create({ recipientId, type, message, entityType, entityId }); publishToUser(String(recipientId), 'notifications:refresh'); return notification }
 export function actor(req: { authUser?: { id: string } }) { if (!req.authUser) throw new AppError(401,'UNAUTHORIZED','Authentication is required.'); return req.authUser.id }
 
-export async function updateMe(userId: string, input: Record<string, any>) { return User.findByIdAndUpdate(userId, { $set: input }, { new: true, runValidators: true }).select('-__v') }
+export async function updateMe(userId: string, input: Record<string, any>) {
+  const user = await User.findByIdAndUpdate(userId, { $set: input }, { new: true, runValidators: true }).select('-__v')
+  if (!user) throw notFound('FoodBridge profile was not found. Retry account setup or contact support.')
+  return user
+}
 export async function enrollVolunteer(userId: string) {
   const user = await User.findById(userId)
   if (!user) throw notFound('User not found.')

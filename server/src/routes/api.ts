@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
 import * as controller from '../controllers/api.js'
 import { authenticate } from '../middleware/authenticate.js'
 import { requireDatabase } from '../middleware/requireDatabase.js'
@@ -7,13 +7,15 @@ import { validateBody, validateParams, validateQuery } from '../middleware/valid
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { decisionInput, donationInput, donationPatch, donationParams, idParams, listQuery, ngoProfileInput, pickupInput, requestInput, uploadSignatureInput, userUpdate, verificationInput } from '../validators/schemas.js'
 
-export const apiRouter = Router()
 const c = new Proxy(controller, { get(target, property: keyof typeof controller) { const handler = target[property]; return typeof handler === 'function' ? asyncHandler(handler as any) : handler } })
+export function createApiRouter(dependencies: { requireDatabase?: RequestHandler; authenticate?: RequestHandler } = {}) {
+const apiRouter = Router()
 apiRouter.get('/health', c.health)
-apiRouter.use(requireDatabase, authenticate)
+apiRouter.use(dependencies.requireDatabase ?? requireDatabase, dependencies.authenticate ?? authenticate)
 
 apiRouter.get('/users/me', c.getMe)
 apiRouter.patch('/users/me', validateBody(userUpdate), c.patchMe)
+apiRouter.all('/users/me', (_req, res) => res.setHeader('Allow', 'GET, PATCH').status(405).json({ error: { code: 'METHOD_NOT_ALLOWED', message: 'Use GET or PATCH for the current-user profile endpoint.' } }))
 apiRouter.put('/users/me/volunteer', c.putVolunteerRole)
 apiRouter.get('/users/me/ngo-profile', requireRole('ngo','admin'), c.getNgoProfile)
 apiRouter.put('/users/me/ngo-profile', validateBody(ngoProfileInput), c.putNgoProfile)
@@ -49,3 +51,8 @@ apiRouter.patch('/admin/verifications/:id/decision', requireRole('admin'), valid
 apiRouter.get('/admin/users', requireRole('admin'), validateQuery(listQuery), c.getAdminUsers)
 apiRouter.get('/admin/donations', requireRole('admin'), validateQuery(listQuery), c.getAdminDonations)
 apiRouter.get('/admin/analytics', requireRole('admin'), c.getAnalytics)
+
+return apiRouter
+}
+
+export const apiRouter = createApiRouter()
