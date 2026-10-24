@@ -147,7 +147,7 @@ API integration and Socket.IO tests bind local ports. Database transaction check
 
 ## Deployment
 
-The frontend and API deploy as separate services. The root `vercel.json` builds the Vite client workspace and sends client-side routes to its SPA entry point. The API uses the existing Render blueprint in `render.yaml`; the Express process keeps a persistent HTTP server for Socket.IO and connects to MongoDB, so it should run on a long-lived Node host rather than as a Vercel function. The existing `netlify.toml` remains available for Netlify. No deployment has been performed or live-verified.
+The frontend and API deploy as separate services. `client/vercel.json` configures a Vite deployment rooted at `client` and sends client-side routes to its SPA entry point. The API uses the existing Render blueprint in `render.yaml`; the Express process keeps a persistent HTTP server for Socket.IO and connects to MongoDB, so it should run on a long-lived Node host rather than as a Vercel function. The existing `netlify.toml` remains available for Netlify. No deployment has been performed or live-verified.
 
 ### Vercel frontend settings
 
@@ -155,11 +155,11 @@ Import this repository in Vercel and use:
 
 | Setting | Value |
 | --- | --- |
-| Root Directory | `.` (repository root; leave “Include files outside the Root Directory” enabled if shown) |
+| Root Directory | `client` |
 | Framework Preset | `Vite` |
-| Install Command | `npm ci --include=dev` |
-| Build Command | `npm run build --workspace client` |
-| Output Directory | `client/dist` |
+| Install Command | `npm install --include=dev --package-lock=false` |
+| Build Command | `npm run build` |
+| Output Directory | `dist` |
 
 Set the client environment variables in Vercel before building. In particular, set `VITE_API_URL` to the deployed API origin followed by `/api`, for example `https://foodbridge-api.example.com/api` (replace the example with the actual API URL). The client appends `/v1` for REST requests; Socket.IO connects to the same host. Do not set this to `localhost` or a Vercel URL unless the API is actually hosted there. Also set the Firebase Web app values listed in `.env.example` if sign-in is needed. These `VITE_` values are public client configuration, not server secrets.
 
