@@ -11,6 +11,7 @@
     "build": "npm run build --workspace server && npm run build --workspace client",
     "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client",
     "test": "npm run test --workspace server && npm run test --workspace client",
+    "test:firestore": "firebase emulators:exec --only firestore --project demo-foodbridge \"npm run test:firestore --workspace client\"",
     "db:indexes": "npm run db:indexes --workspace server",
     "start": "npm run start --workspace server"
   },

@@ -1,0 +1,174 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owns(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function isActiveAdmin() {
+      return signedIn()
+        && userDoc(request.auth.uid).data.role == 'admin'
+        && userDoc(request.auth.uid).data.accountStatus == 'active';
+    }
+
+    function validUserFields(data) {
+      return data.keys().hasOnly([
+          'firebaseUid', 'displayName', 'email', 'phone', 'role',
+          'accountStatus', 'profile', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'firebaseUid', 'displayName', 'email', 'role',
+          'accountStatus', 'createdAt', 'updatedAt'
+        ])
+        && data.firebaseUid is string
+        && data.displayName is string
+        && data.displayName.size() >= 2
+        && data.displayName.size() <= 120
+        && data.email is string
+        && data.role in ['donor', 'ngo', 'volunteer', 'admin']
+        && data.accountStatus in ['active', 'pending', 'suspended']
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 32))
+        && (!('profile' in data) || (
+          data.profile is map
+          && data.profile.keys().hasOnly(['avatarUrl', 'address', 'bio'])
+          && (!('avatarUrl' in data.profile) || (data.profile.avatarUrl is string && data.profile.avatarUrl.size() <= 2048))
+          && (!('address' in data.profile) || (data.profile.address is string && data.profile.address.size() <= 500))
+          && (!('bio' in data.profile) || (data.profile.bio is string && data.profile.bio.size() <= 1000))
+        ));
+    }
+
+    function validNgoFields(data) {
+      return data.keys().hasOnly([
+          'ownerUid', 'organizationName', 'address', 'registration', 'capacity',
+          'verificationStatus', 'verifiedBy', 'verifiedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'ownerUid', 'organizationName', 'address', 'registration', 'capacity',
+          'verificationStatus', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerUid is string
+        && data.organizationName is string
+        && data.organizationName.size() >= 2
+        && data.organizationName.size() <= 180
+        && data.address is map
+        && data.address.keys().hasOnly(['line1', 'line2', 'city', 'region', 'postalCode', 'country'])
+        && data.address.keys().hasAll(['line1', 'city', 'region', 'country'])
+        && data.address.line1 is string && data.address.line1.size() >= 2 && data.address.line1.size() <= 180
+        && data.address.city is string && data.address.city.size() >= 2 && data.address.city.size() <= 100
+        && data.address.region is string && data.address.region.size() >= 2 && data.address.region.size() <= 100
+        && data.address.country is string && data.address.country.size() >= 2 && data.address.country.size() <= 100
+        && (!('line2' in data.address) || (data.address.line2 is string && data.address.line2.size() <= 180))
+        && (!('postalCode' in data.address) || (data.address.postalCode is string && data.address.postalCode.size() <= 24))
+        && data.registration is map
+        && data.registration.keys().hasOnly(['number', 'documentUrl'])
+        && data.registration.keys().hasAll(['number'])
+        && data.registration.number is string && data.registration.number.size() >= 2 && data.registration.number.size() <= 100
+        && (!('documentUrl' in data.registration) || (data.registration.documentUrl is string && data.registration.documentUrl.size() <= 2048))
+        && data.capacity is map
+        && data.capacity.keys().hasOnly(['mealsPerDay', 'storageNotes'])
+        && data.capacity.keys().hasAll(['mealsPerDay'])
+        && data.capacity.mealsPerDay is number && data.capacity.mealsPerDay >= 0
+        && (!('storageNotes' in data.capacity) || (data.capacity.storageNotes is string && data.capacity.storageNotes.size() <= 500))
+        && data.verificationStatus in ['pending', 'approved', 'rejected'];
+    }
+
+    match /users/{uid} {
+      allow get: if owns(uid) || isActiveAdmin();
+      allow list: if isActiveAdmin();
+
+      // Public registration can create ordinary roles only. Admin profiles
+      // must be seeded by a trusted operator, never by the client app.
+      allow create: if owns(uid)
+        && request.resource.data.firebaseUid == uid
+        && request.resource.data.email == request.auth.token.email
+        && validUserFields(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.role in ['donor', 'ngo', 'volunteer']
+        && request.resource.data.accountStatus == (request.resource.data.role == 'ngo' ? 'pending' : 'active')
+        && (request.resource.data.role != 'ngo' || (
+          existsAfter(/databases/$(database)/documents/ngoProfiles/$(uid))
+          && getAfter(/databases/$(database)/documents/ngoProfiles/$(uid)).data.ownerUid == uid
+          && getAfter(/databases/$(database)/documents/ngoProfiles/$(uid)).data.verificationStatus == 'pending'
+        ));
+
+      // A user can edit contact/profile content only. Role, account status,
+      // Firebase identity and email are immutable to the owner.
+      allow update: if owns(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone', 'profile', 'updatedAt'])
+        && validUserFields(request.resource.data)
+        && request.resource.data.updatedAt == request.time;
+
+      // Trusted admin verification batches may update NGO account status, but
+      // may not change role or unrelated identity/profile data.
+      allow update: if isActiveAdmin()
+        && request.auth.uid != uid
+        && resource.data.role == 'ngo'
+        && resource.data.accountStatus == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountStatus', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.accountStatus in ['active', 'pending']
+        && getAfter(/databases/$(database)/documents/ngoProfiles/$(uid)).data.verificationStatus == (request.resource.data.accountStatus == 'active' ? 'approved' : 'rejected');
+
+      allow delete: if false;
+    }
+
+    match /ngoProfiles/{uid} {
+      allow get: if owns(uid) || isActiveAdmin();
+      allow list: if isActiveAdmin();
+
+      allow create: if owns(uid)
+        && request.resource.data.ownerUid == uid
+        && validNgoFields(request.resource.data)
+        && request.resource.data.verificationStatus == 'pending'
+        && !('verifiedBy' in request.resource.data)
+        && !('verifiedAt' in request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.role == 'ngo'
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.accountStatus == 'pending';
+
+      allow update: if owns(uid)
+        && resource.data.verificationStatus == 'pending'
+        && request.resource.data.verificationStatus == 'pending'
+        && !('verifiedBy' in request.resource.data)
+        && !('verifiedAt' in request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'organizationName', 'address', 'registration', 'capacity', 'updatedAt'
+        ])
+        && validNgoFields(request.resource.data)
+        && request.resource.data.updatedAt == request.time;
+
+      // Only a different, active admin can decide a pending application.
+      // The applicant account status must be changed in the same transaction.
+      allow update: if isActiveAdmin()
+        && request.auth.uid != uid
+        && resource.data.verificationStatus == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'verificationStatus', 'verifiedBy', 'verifiedAt', 'updatedAt'
+        ])
+        && request.resource.data.verificationStatus in ['approved', 'rejected']
+        && request.resource.data.verifiedBy == request.auth.uid
+        && request.resource.data.verifiedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && userDoc(uid).data.role == 'ngo'
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.accountStatus == (request.resource.data.verificationStatus == 'approved' ? 'active' : 'pending');
+
+      allow delete: if false;
+    }
+
+    // Donation, request, pickup, notification and audit collections are not
+    // opened by this profile migration. They remain behind the existing API.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

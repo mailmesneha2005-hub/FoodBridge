@@ -9,13 +9,15 @@ import { Button } from '../components/Button'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { apiList, apiRequest } from '../services/apiClient'
+import { firebaseAuth, profileStoreMode } from '../services/firebase'
+import { readNgoProfile, readProfile, updateProfile } from '../services/profileStore'
 import type { UserRole } from '../types/domain'
 
 type DonationRecord = { _id: string; title: string; category: string; status: string; quantity: { amount: number; unit: string }; safeUseDeadline: string; address: { city: string; region: string }; updatedAt: string }
 type DonationRef = string | { title?: string; category?: string; quantity?: { amount: number; unit: string }; address?: { city?: string; region?: string } }
 type PickupRecord = { _id: string; donationId: DonationRef; assignmentStatus: string; pickupTime?: string; updatedAt: string }
 type AccountRecord = { displayName: string; email: string; phone?: string; role: UserRole; accountStatus: string; profile?: { address?: string; bio?: string } }
-type OrganizationRecord = { organizationName: string; address: { line1: string; line2?: string; city: string; region: string; postalCode?: string; country: string }; registration: { number: string }; capacity: { mealsPerDay: number; storageNotes?: string }; verificationStatus: string }
+type OrganizationRecord = { ownerUid?: string; organizationName: string; address: { line1: string; line2?: string; city: string; region: string; postalCode?: string; country: string }; registration: { number: string }; capacity: { mealsPerDay: number; storageNotes?: string }; verificationStatus: string }
 
 const stateStyle = (state: string): 'success' | 'warning' | 'danger' | 'neutral' => state === 'delivered' || state === 'approved' || state === 'active' ? 'success' : state === 'pending' || state === 'assigned' || state === 'picked_up' ? 'warning' : state === 'cancelled' || state === 'expired' || state === 'rejected' ? 'danger' : 'neutral'
 const readable = (value: string) => value.replaceAll('_', ' ')
@@ -88,10 +90,19 @@ function AccountProfile({ role }: { role: UserRole }) {
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const user = await apiRequest<AccountRecord>('/users/me')
+      const currentUser = firebaseAuth?.currentUser
+      if (profileStoreMode === 'firestore' && !currentUser) throw new Error('Sign in again to load your profile.')
+      const user = profileStoreMode === 'firestore'
+        ? await readProfile(currentUser!.uid)
+        : await apiRequest<AccountRecord>('/users/me')
       setAccount(user)
       if (role === 'ngo') {
-        try { setOrganization(await apiRequest<OrganizationRecord>('/users/me/ngo-profile')) }
+        try {
+          const value = profileStoreMode === 'firestore'
+            ? await readNgoProfile(currentUser!.uid)
+            : await apiRequest<OrganizationRecord>('/users/me/ngo-profile')
+          setOrganization(value)
+        }
         catch (reason) { if (reason instanceof Error && !/not found/i.test(reason.message)) throw reason; setOrganization(null) }
       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load your profile.') }
@@ -103,7 +114,10 @@ function AccountProfile({ role }: { role: UserRole }) {
     setSaving(true); setError('')
     const values = new FormData(event.currentTarget)
     try {
-      const updated = await apiRequest<AccountRecord>('/users/me', { method: 'PATCH', body: JSON.stringify({ displayName: String(values.get('displayName') || '').trim(), phone: String(values.get('phone') || '').trim() || undefined, profile: { address: String(values.get('address') || '').trim() || undefined, bio: String(values.get('bio') || '').trim() || undefined } }) })
+      const changes = { displayName: String(values.get('displayName') || '').trim(), phone: String(values.get('phone') || '').trim() || undefined, profile: { address: String(values.get('address') || '').trim() || undefined, bio: String(values.get('bio') || '').trim() || undefined } }
+      const updated = profileStoreMode === 'firestore'
+        ? await updateProfile(firebaseAuth!.currentUser!.uid, changes)
+        : await apiRequest<AccountRecord>('/users/me', { method: 'PATCH', body: JSON.stringify(changes) })
       setAccount(updated); await refreshProfile(); toast({ title: 'Profile saved', message: 'Your account details were updated.', variant: 'success' })
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Your profile could not be saved.') }
     finally { setSaving(false) }

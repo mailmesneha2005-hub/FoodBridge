@@ -1,17 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { onAuthStateChanged, signOut, type User as FirebaseUser } from 'firebase/auth'
 import type { UserRole } from '../types/domain'
-import { firebaseAuth, firebaseConfigured } from '../services/firebase'
+import { firebaseAuth, firebaseConfigured, profileStoreMode } from '../services/firebase'
 import { apiRequest, type ApiError } from '../services/apiClient'
-
-export interface FoodBridgeProfile {
-  id: string
-  firebaseUid: string
-  displayName: string
-  email: string
-  role: UserRole
-  accountStatus: 'active' | 'pending' | 'suspended'
-}
+import { readProfile, type FoodBridgeProfile } from '../services/profileStore'
+export type { FoodBridgeProfile } from '../services/profileStore'
 const demoStorageKey = 'foodbridge-prototype-demo-role'
 function readDemoRole(): UserRole | null {
   if (!import.meta.env.DEV) return null
@@ -31,8 +24,6 @@ interface AuthState {
 }
 const Context = createContext<AuthState | null>(null)
 
-function profileId(value: Record<string, unknown>) { return String(value.id ?? value._id ?? '') }
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [demoRole, setDemoRole] = useState<UserRole | null>(readDemoRole)
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null)
@@ -41,9 +32,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileError, setProfileError] = useState<string | null>(null)
   const refreshProfile = useCallback(async () => {
     if (!firebaseAuth?.currentUser) throw new Error('Sign in before loading your FoodBridge profile.')
+    if (profileStoreMode === 'firestore') {
+      const next = await readProfile(firebaseAuth.currentUser.uid)
+      setProfile(next); setProfileError(null)
+      return next
+    }
     const raw = await apiRequest<Record<string, unknown>>('/users/me')
     const next: FoodBridgeProfile = {
-      id: profileId(raw), firebaseUid: String(raw.firebaseUid), displayName: String(raw.displayName), email: String(raw.email),
+      id: String(raw.id ?? raw._id ?? ''), firebaseUid: String(raw.firebaseUid), displayName: String(raw.displayName), email: String(raw.email),
       role: raw.role as UserRole, accountStatus: raw.accountStatus as FoodBridgeProfile['accountStatus'],
     }
     if (!next.id || !['donor', 'ngo', 'volunteer', 'admin'].includes(next.role)) throw new Error('The API did not return a valid FoodBridge account profile.')
@@ -110,6 +106,9 @@ export function authErrorMessage(error: unknown) {
     'auth/invalid-api-key': 'Firebase rejected the web API key. Check VITE_FIREBASE_API_KEY against the Firebase Web app settings.',
     'auth/unauthorized-domain': 'This website domain is not authorized in Firebase Authentication. Add it under Authentication settings → Authorized domains.',
     'auth/operation-not-supported-in-this-environment': 'Firebase Authentication is unavailable in this browser context. Open FoodBridge in a regular browser tab and try again.',
+    'permission-denied': 'FoodBridge could not access this profile. Confirm Firestore is enabled and the reviewed rules are published for this Firebase project.',
+    unavailable: 'Cloud Firestore is temporarily unavailable. Check your connection and retry; your Firebase account remains available.',
+    'failed-precondition': 'Cloud Firestore is not ready for this project. Confirm that the database has been created.',
     AUTH_NOT_CONFIGURED: 'Firebase sign-in is not configured for this app yet.',
     DATABASE_NOT_CONFIGURED: 'The account service is not connected to MongoDB yet.',
     DATABASE_UNAVAILABLE: 'The account service is temporarily unavailable. Try again shortly.',

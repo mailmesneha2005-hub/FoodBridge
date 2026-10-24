@@ -20,4 +20,15 @@ export const missingFirebaseConfig = Object.entries(config)
   .map(([key]) => firebaseConfigVariables[key as keyof typeof firebaseConfigVariables])
 
 export const firebaseConfigured = missingFirebaseConfig.length === 0
-export const firebaseAuth = firebaseConfigured ? getAuth(getApps().length ? getApp() : initializeApp(config)) : null
+export const firebaseApp = firebaseConfigured ? (getApps().length ? getApp() : initializeApp(config)) : null
+export const firebaseAuth = firebaseApp ? getAuth(firebaseApp) : null
+
+export async function getFoodBridgeFirestore() {
+  if (!firebaseApp) throw new Error('Firebase is not configured for this client.')
+  const { getFirestore } = await import('firebase/firestore')
+  return getFirestore(firebaseApp)
+}
+
+// Keep production on the existing profile API until MongoDB profiles have been
+// migrated and verified. Opt into Firestore explicitly after that migration.
+export const profileStoreMode = import.meta.env.VITE_PROFILE_STORE === 'firestore' ? 'firestore' : 'api'

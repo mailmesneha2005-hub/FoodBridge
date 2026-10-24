@@ -117,11 +117,30 @@ Copy `.env.example` to `.env` and set the values below. The example contains var
 | `FIREBASE_PROJECT_ID`, `FIREBASE_SERVICE_ACCOUNT_PATH` | Firebase Admin server credentials; keep the service-account JSON outside this repository |
 | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | Firebase Web app configuration for client sign-in |
 | `VITE_API_URL` | Deployed API base URL ending in `/api` for production; local Vite proxy is used if omitted during development |
+| `VITE_PROFILE_STORE` | `api` (default) or `firestore`; only switch to `firestore` after MongoDB profiles are migrated and verified |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `CLOUDINARY_UPLOAD_PRESET` | Signed image uploads; API secret stays on the server |
 | `GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_MAPS_API_KEY` | Reserved for Maps integration; the app currently does not make Maps API calls |
 | `ADMIN_BOOTSTRAP_FIREBASE_UID` | Temporary, one-time initial admin bootstrap only |
 
 Firebase setup: create a Firebase project and Web app, enable Email/Password under Authentication, add localhost and deployed domains to Authorized domains, and configure the Web app values above. For the API, provide Firebase Admin credentials and MongoDB. The server verifies ID tokens and gets roles from MongoDB; public registration cannot grant admin access.
+
+### First phase: Firestore user profiles
+
+The client can optionally store authentication-linked user profiles in Cloud Firestore using `users/{firebaseUid}` and NGO applications in `ngoProfiles/{firebaseUid}`. Registration creates only donor, NGO, or volunteer profiles; NGO applications begin with `accountStatus: pending` and `verificationStatus: pending`. Client profile edits cannot change role, account status, or NGO verification fields. Admin profiles must be provisioned by a trusted operator. The reviewed rules are in `firestore.rules`; `firebase.json` points the Firebase CLI at those rules and the local emulator.
+
+`VITE_PROFILE_STORE` defaults to `api` so production profile reads continue using MongoDB until the migration is complete. Do not set it to `firestore` before completing this migration checklist:
+
+1. Take and verify an encrypted MongoDB backup. Keep the API profile mode available as the rollback path.
+2. Export every `User`; create `users/{firebaseUid}` documents with the current `firebaseUid`, display name, normalized email, phone, role, account status, editable profile fields and timestamps. Do not infer roles from client data or overwrite an existing Firestore document.
+3. Export each `NGOProfile`; join its `userId` to the Mongo `User._id`, then write it to `ngoProfiles/{firebaseUid}` preserving organization details, verification status, `verifiedBy` and `verifiedAt` (mapped to the admin Firebase UID where available).
+4. Stop on duplicate/missing Firebase UIDs or conflicting destination documents. Reconcile them manually; never resolve conflicts by downgrading an approved/suspended profile.
+5. Compare source and destination counts by role, account status and NGO verification status, sample-check user and NGO records, test sign-in/profile reads and verify admin access before changing the frontend setting.
+6. Keep MongoDB writes and Firestore verification status synchronized during the cutover window. The current Admin verification screen still writes MongoDB through Express; it does not update Firestore. Firestore profile mode is not production-ready until that admin workflow and the backend's role authorization read the same authoritative profile data.
+7. Change `VITE_PROFILE_STORE` only after the migration and synchronization are verified, rebuild the frontend, and retain the source backup and a tested rollback plan.
+
+To exercise rules locally after installing dependencies, run `npm run test:firestore`. It starts only the Firestore Emulator with the `demo-foodbridge` project ID. It does not publish rules or access the production project. A real migration requires an operator-run Admin SDK migration tool with read-only source access first; no production profile data is included in this repository.
+
+This is only a profile migration phase. Donations, NGO requests, volunteer tasks, notifications, admin analytics/verification, Cloudinary signatures and Socket.IO still use the Express API. Its authorization still reads MongoDB roles, so Firestore roles do not automatically grant API access. Firestore rules intentionally deny access to other collections. Removing the Express deployment would leave those workflows unavailable until separately migrated.
 
 To create the first administrator, create and verify the operator's Firebase account, confirm the API points at the intended database, set `ADMIN_BOOTSTRAP_FIREBASE_UID` temporarily in a secure shell, and run:
 

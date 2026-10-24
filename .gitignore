@@ -14,3 +14,4 @@ coverage/
 *service-account*.json
 *firebase-admin*.json
 server/.secrets/
+*.zip
