@@ -147,13 +147,31 @@ API integration and Socket.IO tests bind local ports. Database transaction check
 
 ## Deployment
 
-The repository includes a Render API blueprint (`render.yaml`) and Netlify frontend configuration (`netlify.toml`). Deployment has not been performed or live-verified.
+The frontend and API deploy as separate services. The root `vercel.json` builds the Vite client workspace and sends client-side routes to its SPA entry point. The API uses the existing Render blueprint in `render.yaml`; the Express process keeps a persistent HTTP server for Socket.IO and connects to MongoDB, so it should run on a long-lived Node host rather than as a Vercel function. The existing `netlify.toml` remains available for Netlify. No deployment has been performed or live-verified.
+
+### Vercel frontend settings
+
+Import this repository in Vercel and use:
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `.` (repository root; leave “Include files outside the Root Directory” enabled if shown) |
+| Framework Preset | `Vite` |
+| Install Command | `npm ci --include=dev` |
+| Build Command | `npm run build --workspace client` |
+| Output Directory | `client/dist` |
+
+Set the client environment variables in Vercel before building. In particular, set `VITE_API_URL` to the deployed API origin followed by `/api`, for example `https://foodbridge-api.example.com/api` (replace the example with the actual API URL). The client appends `/v1` for REST requests; Socket.IO connects to the same host. Do not set this to `localhost` or a Vercel URL unless the API is actually hosted there. Also set the Firebase Web app values listed in `.env.example` if sign-in is needed. These `VITE_` values are public client configuration, not server secrets.
+
+The rewrite in `vercel.json` is for React Router deep links such as `/donor/dashboard`; it does not proxy `/api` to the backend. API traffic goes directly to `VITE_API_URL`.
+
+### API and shared services
 
 1. Create MongoDB Atlas, restrict network access, create a least-privilege database user, and configure backups.
-2. Deploy the API to Render with MongoDB, Firebase Admin, and Cloudinary values in the host's secret settings. Set `CLIENT_ORIGIN` to the exact HTTPS frontend origin.
+2. Deploy the API to Render using `render.yaml` (or another persistent Node host) with MongoDB, Firebase Admin, and Cloudinary values in the host's secret settings. Set `CLIENT_ORIGIN` to the exact HTTPS Vercel frontend origin. Render's blueprint expects the environment variable names shown in `render.yaml` and `.env.example`.
 3. Run `npm run db:indexes` against the intended database after taking a backup.
-4. Set the Firebase Web variables and `VITE_API_URL=https://<api-host>/api` in Netlify's build environment, then deploy the client.
-5. Add the deployed frontend domain to Firebase Authorized domains. Confirm the API health check reports a connected database before using real workflows.
+4. Add the deployed frontend domain to Firebase Authorized domains. Confirm `https://<api-host>/api/v1/health` reports a connected database before using real workflows.
+5. Redeploy the Vercel client after changing any `VITE_` environment value; Vite embeds these values at build time.
 
 Production startup requires valid service configuration and HTTPS CORS origins. Use your hosting provider's secret manager; do not put server credentials in `VITE_` variables.
 
